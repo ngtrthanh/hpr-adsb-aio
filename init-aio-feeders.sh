@@ -128,7 +128,7 @@ launch_rbfeeder_1() { /usr/bin/rbfeeder --config /etc/rbfeeder_1.ini > /dev/null
 launch_rbfeeder_2() { /usr/bin/rbfeeder --config /etc/rbfeeder_2.ini > /dev/null 2>&1 & }
 launch_piaware()    { /usr/bin/piaware > /dev/null 2>&1 & }
 launch_pfclient()   { /usr/bin/pfclient --sharecode="${FD_PFC_SHARECODE}" --address=127.0.0.1 --port=30005 --data_format=1 --connection_type=1 --lat="${FEEDER_LAT}" --lon="${FEEDER_LONG}" --pid_file=/run/pfclient.pid --log_path=/var/log/pfclient > /dev/null 2>&1 & }
-launch_adsbhub()    { /usr/bin/adsbhub.sh -c 127.0.0.1 -p 30005 -k "${FD_AHUB_CLIENTKEY}" > /dev/null 2>&1 & }
+launch_adsbhub()    { CLIENTKEY="${FD_AHUB_CLIENTKEY}" SBSHOST=127.0.0.1 SBSPORT=30003 /usr/bin/adsbhub.sh > /dev/null 2>&1 & }
 launch_openskyd()   { /usr/bin/openskyd > /dev/null 2>&1 & }
 launch_hpradar()    { :; }  # already running via ultrafeeder core
 
