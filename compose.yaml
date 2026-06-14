@@ -1,0 +1,49 @@
+services:
+  a3-aio:
+    image: ghcr.io/ngtrthanh/hpr-adsb-aio:latest
+    container_name: a3-aio
+    restart: unless-stopped
+    tty: true
+    device_cgroup_rules:
+      - 'c 189:* rwm'
+    ports:
+      - 8080:80                 # Bản đồ Tar1090 + Monitor Dashboard
+      - 9273-9274:9273-9274     # Prometheus Metrics API
+      - 30005:30005             # Beast Output
+    environment:
+      - LOGLEVEL=error
+      - TZ=${FEEDER_TZ}
+      - READSB_DEVICE_TYPE=rtlsdr
+      - READSB_RTLSDR_DEVICE=${ADSB_SDR_SERIAL}
+      - READSB_RTLSDR_GAIN=${ADSB_SDR_GAIN}     
+      - READSB_ENABLE_API=true
+      - READSB_EXTRA_ARGS=--quiet --write-json-globe-index --net-api-port unix:/run/readsb/api.sock
+      - READSB_LAT=${FEEDER_LAT}
+      - READSB_LON=${FEEDER_LONG}
+      - READSB_ALT=${FEEDER_ALT_M}m
+      - ULTRAFEEDER_CONFIG=adsb,skyfeed.hpradar.com,30004,beast_reduce_plus_out,uuid=${MULTIFEEDER_UUID};
+      # Token đẩy từ file .env lên
+      - FD_FR24KEY=${FD_FR24KEY}
+      - FD_RBFEEDER_SHARING_KEY_1=${FD_RBFEEDER_SHARING_KEY_1}
+      - FD_RBFEEDER_SHARING_KEY_2=${FD_RBFEEDER_SHARING_KEY_2}
+      - FD_PIAWARE_FEEDER_ID=${FD_PIAWARE_FEEDER_ID}
+      - FD_AHUB_CLIENTKEY=${FD_AHUB_CLIENTKEY}
+      - FD_OPENSKY_USERNAME=${FD_OPENSKY_USERNAME}
+      - FD_OPENSKY_SERIAL=${FD_OPENSKY_SERIAL}
+      - FD_PFC_SHARECODE=${FD_PFC_SHARECODE}
+    volumes:
+      - ./globe_history:/var/globe_history
+      - ./graphs1090:/var/lib/collectd
+      - /proc/diskstats:/proc/diskstats:ro
+      - /dev:/dev:ro
+      - /srv/hpr/feeders/status.html:/usr/share/readsb/html/status.html:ro
+    tmpfs:
+      - /run:exec,size=256M
+      - /tmp:size=128M
+    networks:
+      - hpr-net
+
+networks:
+  hpr-net:
+    name: hpr-net
+    external: true

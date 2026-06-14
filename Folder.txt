@@ -1,0 +1,15 @@
+hpr-adsb-aio/
+├── Dockerfile              # Multi-stage build: compile piaware/mlat, copy binaries, produce runtime image
+├── compose.yaml            # Single-container deployment (requires hpr-net network + .env file)
+├── .env.example            # Template for all required env vars — copy to .env before first run
+├── init-aio-feeders.sh     # Registry-driven bootstrap: FEEDER_REGISTRY drives config gen,
+│                           # process launch, and status JSON — add feeder here only
+├── index.html              # Data-driven dashboard — reads /api/hpr_status.json, no hardcoded lists
+├── build.sh                # Multi-arch buildx push to ghcr.io (arm/v7 + arm64)
+└── kill.sh                 # Stop and remove the a3-aio container
+
+# To add a new aggregator:
+#   1. Add one entry to FEEDER_REGISTRY in init-aio-feeders.sh
+#   2. Write configure_<id>() and launch_<id>() functions in the same file
+#   3. Add env vars to compose.yaml + .env.example
+#   Dashboard updates automatically — no frontend changes needed.

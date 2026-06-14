@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HPR ADSB AIO — Feeder Matrix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        :root {
+            --bg:        #0b0f19;
+            --border:    #151f35;
+            --border-hi: #1e3a5f;
+            --green:     #00ff9d;
+            --red:       #ff3b5c;
+            --blue:      #4da6ff;
+            --amber:     #ffb340;
+            --text:      #c9d8f0;
+            --dim:       #3d5070;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { background: var(--bg); color: var(--text); font-family: 'Share Tech Mono', monospace; min-height: 100vh; }
+
+        /* CRT scanlines */
+        body::before {
+            content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1000;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+        }
+        /* Vignette */
+        body::after {
+            content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 999;
+            background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+        }
+
+        .wrap { max-width: 1300px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
+
+        /* ── HEADER ── */
+        .hdr {
+            display: flex; justify-content: space-between; align-items: flex-end;
+            flex-wrap: wrap; gap: 1rem;
+            border-bottom: 1px solid var(--border-hi); padding-bottom: 1.25rem; margin-bottom: 2.25rem;
+        }
+        .node-tag { font-size: 9px; color: var(--dim); letter-spacing: 0.22em; text-transform: uppercase; margin-bottom: 5px; }
+        .title {
+            font-family: 'VT323', monospace; font-size: 2.6rem; line-height: 1;
+            color: var(--blue); letter-spacing: 0.04em; text-shadow: 0 0 24px rgba(77,166,255,0.35);
+        }
+        .title em { font-style: normal; color: var(--green); text-shadow: 0 0 24px rgba(0,255,157,0.45); }
+
+        .sync-block { text-align: right; }
+        .sync-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+        .sync-dot {
+            width: 7px; height: 7px; border-radius: 50; flex-shrink: 0;
+            background: var(--green); box-shadow: 0 0 8px var(--green);
+            animation: blink 2s ease-in-out infinite;
+        }
+        .sync-dot.err { background: var(--red); box-shadow: 0 0 8px var(--red); animation: none; }
+        .sync-lbl { font-size: 11px; letter-spacing: 0.14em; color: var(--green); }
+        .sync-lbl.err { color: var(--red); }
+        .sync-ts { font-size: 9px; color: var(--dim); letter-spacing: 0.1em; margin-top: 5px; }
+        .interval { display: inline-block; font-size: 9px; letter-spacing: 0.18em; color: var(--amber); border: 1px solid rgba(255,179,64,0.25); padding: 2px 9px; margin-top: 7px; }
+
+        /* ── GRID ── */
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; }
+        @media (max-width: 760px) {
+            .grid2 { grid-template-columns: 1fr; }
+            .title { font-size: 2rem; }
+            .hdr { flex-direction: column; align-items: flex-start; }
+            .sync-block { text-align: left; }
+            .sync-row { justify-content: flex-start; }
+        }
+
+        /* ── PANEL ── */
+        .panel-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .panel-lbl { font-size: 9px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+        .panel-rule { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border-hi), transparent); }
+
+        /* ── TABLE ── */
+        .tbl { width: 100%; border-collapse: collapse; }
+        .tbl thead tr { border-bottom: 1px solid var(--border-hi); }
+        .tbl th { padding: 5px 10px; font-size: 8px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim); font-weight: normal; text-align: center; }
+        .tbl th:first-child { text-align: left; }
+        .tbl tbody tr { border-bottom: 1px solid var(--border); transition: background 0.12s; }
+        .tbl tbody tr:last-child { border-bottom: none; }
+        .tbl tbody tr:hover { background: rgba(77,166,255,0.035); }
+        .tbl td { padding: 9px 10px; font-size: 12px; text-align: center; vertical-align: middle; }
+        .tbl td.nm { text-align: left; color: var(--blue); letter-spacing: 0.02em; }
+        .tbl td.nm.dead { color: var(--dim); }
+        .ok   { color: var(--green); text-shadow: 0 0 8px rgba(0,255,157,0.55); }
+        .fail { color: var(--red); opacity: 0.6; }
+        .d-ok { color: var(--text); }
+        .d-no { color: var(--dim); }
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+        .dot.alive { background: var(--green); box-shadow: 0 0 7px var(--green), 0 0 14px rgba(0,255,157,0.25); animation: blink 2s ease-in-out infinite; }
+        .dot.dead  { background: var(--red); opacity: 0.4; }
+
+        /* skeleton */
+        .skel td { animation: shimmer 1.4s ease-in-out infinite; color: var(--dim); }
+
+        /* ── FOOTER ── */
+        .footer { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        .btn-map {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+            color: var(--blue); border: 1px solid var(--border-hi); padding: 8px 20px;
+            text-decoration: none; position: relative; overflow: hidden;
+            transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+        .btn-map::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(77,166,255,0.07), transparent); transform: translateX(-100%); transition: transform 0.4s; }
+        .btn-map:hover { color: var(--green); border-color: rgba(0,255,157,0.35); box-shadow: 0 0 12px rgba(0,255,157,0.1); }
+        .btn-map:hover::before { transform: translateX(100%); }
+        .footer-meta { margin-left: auto; font-size: 9px; letter-spacing: 0.16em; color: var(--dim); }
+
+        @keyframes blink   { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes shimmer { 0%,100% { opacity: 0.25; } 50% { opacity: 0.5; } }
+        @keyframes row-in  { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+        .row-in { animation: row-in 0.18s ease-out both; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <header class="hdr">
+        <div>
+            <div class="node-tag">HPR-ADSB-AIO &nbsp;//&nbsp; Node: a3-aio &nbsp;//&nbsp; Multi-Arch (armv7l · arm64)</div>
+            <h1 class="title">FEEDER &nbsp;<em>MATRIX</em></h1>
+        </div>
+        <div class="sync-block">
+            <div class="sync-row">
+                <div class="sync-dot" id="sync-dot"></div>
+                <span class="sync-lbl" id="sync-lbl">SYNCING</span>
+            </div>
+            <div class="sync-ts" id="sync-ts">—</div>
+            <div class="interval">SCAN: 5s</div>
+        </div>
+    </header>
+
+    <div class="grid2">
+        <div>
+            <div class="panel-hd"><span class="panel-lbl">Community</span><div class="panel-rule"></div></div>
+            <table class="tbl">
+                <thead><tr><th>Aggregator</th><th>Enabled</th><th>Data</th><th>Status</th></tr></thead>
+                <tbody id="tb-community">
+                    <tr class="skel"><td class="nm">——————————</td><td>—</td><td>—</td><td>—</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div>
+            <div class="panel-hd"><span class="panel-lbl">Commercial</span><div class="panel-rule"></div></div>
+            <table class="tbl">
+                <thead><tr><th>Aggregator</th><th>Enabled</th><th>Data</th><th>Status</th></tr></thead>
+                <tbody id="tb-commercial">
+                    <tr class="skel"><td class="nm">——————————</td><td>—</td><td>—</td><td>—</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <a href="/tar1090/" target="_blank" class="btn-map">&#x2B22; Live Map (Tar1090)</a>
+        <span class="footer-meta">HPR-AIO &nbsp;·&nbsp; PURE LOOPBACK ENGINE</span>
+    </footer>
+
+</div>
+<script>
+    // Builds a single table row. No feeder lists live here — all data from API.
+    function row(name, alive) {
+        return `<tr class="row-in">
+            <td class="nm${alive ? '' : ' dead'}">${name}</td>
+            <td>${alive ? '<span class="ok">✔</span>' : '<span class="fail">✘</span>'}</td>
+            <td>${alive ? '<span class="d-ok">+</span>' : '<span class="d-no">-</span>'}</td>
+            <td><span class="dot ${alive ? 'alive' : 'dead'}"></span></td>
+        </tr>`;
+    }
+
+    async function poll() {
+        try {
+            const res = await fetch('/api/hpr_status.json');
+            if (!res.ok) throw new Error(res.status);
+            const data = await res.json();
+
+            // Group feeders by category — driven entirely by the API response.
+            // Adding a new aggregator in init-aio-feeders.sh automatically
+            // makes it appear here with no frontend changes needed.
+            const groups = {};
+            for (const feeder of Object.values(data.feeders)) {
+                const cat = feeder.category ?? 'other';
+                (groups[cat] ??= []).push(feeder);
+            }
+
+            const empty = '<tr><td class="nm" colspan="4" style="color:var(--dim)">—</td></tr>';
+            document.getElementById('tb-community').innerHTML  = (groups.community  ?? []).map(f => row(f.name, f.alive)).join('') || empty;
+            document.getElementById('tb-commercial').innerHTML = (groups.commercial ?? []).map(f => row(f.name, f.alive)).join('') || empty;
+
+            document.getElementById('sync-dot').className = 'sync-dot';
+            document.getElementById('sync-lbl').className = 'sync-lbl';
+            document.getElementById('sync-lbl').textContent = 'LIVE';
+            document.getElementById('sync-ts').textContent  = `LAST SYNC: ${data.updated_at}`;
+
+        } catch (e) {
+            document.getElementById('sync-dot').className = 'sync-dot err';
+            document.getElementById('sync-lbl').className = 'sync-lbl err';
+            document.getElementById('sync-lbl').textContent = 'DISCONNECTED';
+            document.getElementById('sync-ts').textContent  = `ERR: ${e.message}`;
+        }
+    }
+
+    setInterval(poll, 5000);
+    poll();
+</script>
+</body>
+</html>
