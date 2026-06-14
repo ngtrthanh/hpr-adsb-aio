@@ -1,21 +1,24 @@
+# Local dev/test — pulls beast data from network, no RTL-SDR required.
+# Usage: docker compose -f compose.local.yml up -d --build
+
 services:
   a3-aio:
-    image: ghcr.io/ngtrthanh/hpr-adsb-aio:latest
+    build: .
+    image: hpr-adsb-aio:local
     container_name: a3-aio
     restart: unless-stopped
     tty: true
-    device_cgroup_rules:
-      - 'c 189:* rwm'
+    security_opt:
+      - apparmor:unconfined
     ports:
-      - 8080:80                 # Bản đồ Tar1090 + Monitor Dashboard
-      - 9273-9274:9273-9274     # Prometheus Metrics API
-      - 30005:30005             # Beast Output
+      - 8880:80
+      - 9273-9274:9273-9274
+      - 30005:30005
     environment:
       - LOGLEVEL=error
-      - TZ=${FEEDER_TZ}
-      - READSB_DEVICE_TYPE=rtlsdr
-      - READSB_RTLSDR_DEVICE=${ADSB_SDR_SERIAL}
-      - READSB_RTLSDR_GAIN=${ADSB_SDR_GAIN}     
+      - TZ=${FEEDER_TZ:-Asia/Ho_Chi_Minh}
+      # Beast input from remote host — no SDR
+      - READSB_NET_CONNECTOR=192.168.11.179,30005,beast_in
       - READSB_ENABLE_API=true
       - READSB_EXTRA_ARGS=--quiet --write-json-globe-index --net-api-port unix:/run/readsb/api.sock
       - FEEDER_LAT=${FEEDER_LAT}
@@ -25,7 +28,6 @@ services:
       - READSB_LON=${FEEDER_LONG}
       - READSB_ALT=${FEEDER_ALT_M}m
       - ULTRAFEEDER_CONFIG=adsb,skyfeed.hpradar.com,30004,beast_reduce_plus_out,uuid=${MULTIFEEDER_UUID};
-      # Token đẩy từ file .env lên
       - FD_FR24KEY=${FD_FR24KEY}
       - FD_RBFEEDER_SHARING_KEY_1=${FD_RBFEEDER_SHARING_KEY_1}
       - FD_RBFEEDER_SHARING_KEY_2=${FD_RBFEEDER_SHARING_KEY_2}
@@ -38,8 +40,7 @@ services:
       - ./globe_history:/var/globe_history
       - ./graphs1090:/var/lib/collectd
       - /proc/diskstats:/proc/diskstats:ro
-      - /dev:/dev:ro
-      - /srv/hpr/feeders/status.html:/usr/share/readsb/html/status.html:ro
+      # No /dev mount (no SDR), no status.html (local test)
     tmpfs:
       - /run:exec,size=256M
       - /tmp:size=128M

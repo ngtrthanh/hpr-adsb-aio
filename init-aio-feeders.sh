@@ -1,4 +1,4 @@
-#!/bin/with-contenv bash
+#!/command/with-contenv bash
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FEEDER REGISTRY — single source of truth for all aggregators
@@ -41,31 +41,37 @@ EOF
 
 configure_rbfeeder_1() {
   cat > /etc/rbfeeder_1.ini << EOF
-[main]
-sharing_key=${FD_RBFEEDER_SHARING_KEY_1}
-latitude=${FEEDER_LAT}
-longitude=${FEEDER_LONG}
-altitude=${FEEDER_ALT_M}
-stats_interval=1
+[client]
+network_mode=true
+key=${FD_RBFEEDER_SHARING_KEY_1}
+lat=${FEEDER_LAT}
+lon=${FEEDER_LONG}
+alt=${FEEDER_ALT_M}
 [network]
 mode=beast
 external_port=30005
 external_host=127.0.0.1
+[mlat]
+host=mlat.rb24.com
+port=40900
 EOF
 }
 
 configure_rbfeeder_2() {
   cat > /etc/rbfeeder_2.ini << EOF
-[main]
-sharing_key=${FD_RBFEEDER_SHARING_KEY_2}
-latitude=${FEEDER_LAT}
-longitude=${FEEDER_LONG}
-altitude=${FEEDER_ALT_M}
-stats_interval=1
+[client]
+network_mode=true
+key=${FD_RBFEEDER_SHARING_KEY_2}
+lat=${FEEDER_LAT}
+lon=${FEEDER_LONG}
+alt=${FEEDER_ALT_M}
 [network]
 mode=beast
 external_port=30005
 external_host=127.0.0.1
+[mlat]
+host=mlat.rb24.com
+port=40900
 EOF
 }
 
@@ -79,19 +85,34 @@ receiver-port 30005
 EOF
 }
 
-configure_pfclient() {
-  cat > /etc/pfclient-config.json << EOF
-{
-  "sharecode": "${FD_PFC_SHARECODE}",
-  "tcp_address": "127.0.0.1",
-  "tcp_port": "30005",
-  "data_format": "1"
-}
+configure_pfclient() { :; }  # fully configured via CLI args at launch
+
+configure_adsbhub()  { :; }  # args-only, no config file
+
+configure_openskyd() {
+  mkdir -p /var/lib/openskyd/conf.d
+  cat > /var/lib/openskyd/conf.d/10-opensky.conf << EOF
+[GPS]
+Latitude=${FEEDER_LAT}
+Longitude=${FEEDER_LONG}
+Altitude=${FEEDER_ALT_M}
+
+[DEVICE]
+Type=dump1090
+
+[IDENT]
+Username=${FD_OPENSKY_USERNAME}
+
+[INPUT]
+Host=127.0.0.1
+Port=30005
+EOF
+  cat > /var/lib/openskyd/conf.d/05-serial.conf << EOF
+[Device]
+serial = ${FD_OPENSKY_SERIAL}
 EOF
 }
 
-configure_adsbhub()  { :; }  # args-only, no config file
-configure_openskyd() { :; }  # args-only, no config file
 configure_hpradar()  { :; }  # driven by ULTRAFEEDER_CONFIG env var
 
 # ── LAUNCHERS ─────────────────────────────────────────────────────────────────
@@ -99,10 +120,10 @@ configure_hpradar()  { :; }  # driven by ULTRAFEEDER_CONFIG env var
 launch_fr24feed()   { /usr/bin/fr24feed --config-file=/etc/fr24feed.ini > /dev/null 2>&1 & }
 launch_rbfeeder_1() { /usr/bin/rbfeeder --config /etc/rbfeeder_1.ini > /dev/null 2>&1 & }
 launch_rbfeeder_2() { /usr/bin/rbfeeder --config /etc/rbfeeder_2.ini > /dev/null 2>&1 & }
-launch_piaware()    { /opt/tcl/bin/piaware -configfromfile /etc/piaware.conf > /dev/null 2>&1 & }
-launch_pfclient()   { /usr/bin/pfclient --config-file=/etc/pfclient-config.json > /dev/null 2>&1 & }
+launch_piaware()    { /usr/bin/piaware > /dev/null 2>&1 & }
+launch_pfclient()   { /usr/bin/pfclient --sharecode="${FD_PFC_SHARECODE}" --address=127.0.0.1 --port=30005 --data_format=1 --connection_type=1 --lat="${FEEDER_LAT}" --lon="${FEEDER_LONG}" --pid_file=/run/pfclient.pid --log_path=/var/log/pfclient > /dev/null 2>&1 & }
 launch_adsbhub()    { /usr/bin/adsbhub.sh -c 127.0.0.1 -p 30005 -k "${FD_AHUB_CLIENTKEY}" > /dev/null 2>&1 & }
-launch_openskyd()   { /usr/bin/openskyd --username "${FD_OPENSKY_USERNAME}" --serial "${FD_OPENSKY_SERIAL}" --beast-host 127.0.0.1 --beast-port 30005 > /dev/null 2>&1 & }
+launch_openskyd()   { /usr/bin/openskyd > /dev/null 2>&1 & }
 launch_hpradar()    { :; }  # already running via ultrafeeder core
 
 # ── BOOTSTRAP ─────────────────────────────────────────────────────────────────
@@ -114,6 +135,12 @@ for entry in "${FEEDER_REGISTRY[@]}"; do
   "configure_${id}"
 done
 
+echo "[HPR-AIO] Waiting for beast port 30005 to be ready..."
+for i in $(seq 1 30); do
+  nc -z 127.0.0.1 30005 2>/dev/null && break
+  sleep 1
+done
+
 echo "[HPR-AIO] Launching satellite feeders..."
 for entry in "${FEEDER_REGISTRY[@]}"; do
   IFS='|' read -r id _ _ pgrep_pat <<< "$entry"
@@ -123,7 +150,7 @@ done
 
 # ── TELEMETRY STATUS LOOP ─────────────────────────────────────────────────────
 echo "[HPR-AIO] Starting telemetry status loop..."
-mkdir -p /usr/share/readsb/html/api
+mkdir -p /var/www/html/api
 
 _build_feeders_json() {
   local out=""
@@ -140,7 +167,7 @@ _build_feeders_json() {
 }
 
 while true; do
-  cat > /usr/share/readsb/html/api/hpr_status.json << EOF
+  cat > /var/www/html/api/hpr_status.json << EOF
 {
   "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "feeders": {$(_build_feeders_json)}
