@@ -27,7 +27,28 @@ RUN git clone --depth 1 https://github.com/flightaware/beast-splitter.git && \
     cd beast-splitter && make -j$(nproc)
 
 # ==============================================================================
-# STAGE 2: COMPILE MLAT EXTENSIONS
+# STAGE 2: BUILD RBFEEDER FROM SOURCE (supports amd64 + arm64 + armhf)
+# Source: https://github.com/abcd567a/rbfeeder — community fork with x86_64 support
+# ==============================================================================
+FROM ghcr.io/sdr-enthusiasts/docker-baseimage:base AS rbfeeder-builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git debhelper dh-sysuser sysuser-helper protobuf-c-compiler \
+    libncurses5-dev libncursesw5-dev libjansson-dev \
+    libprotobuf-c-dev libcurl4-openssl-dev librtlsdr-dev \
+    build-essential dh-autoreconf dpkg-dev libev-dev \
+    libudns-dev pkg-config libglib2.0-dev fakeroot && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 https://github.com/abcd567a/rbfeeder.git && \
+    cd rbfeeder && \
+    # Remove source-built librtlsdr from /usr/local so dh_shlibdeps uses the apt-tracked one
+    rm -f /usr/local/lib/librtlsdr* && ldconfig && \
+    dpkg-buildpackage -b --no-sign -d && \
+    dpkg-deb -x /src/rbfeeder_*.deb /opt/rbfeeder-pkg
+
+# ==============================================================================
+# STAGE 3: COMPILE MLAT EXTENSIONS
 # ==============================================================================
 FROM ghcr.io/sdr-enthusiasts/docker-baseimage:base AS mlat-builder
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential git python3-dev python3-setuptools python3-pip
@@ -36,19 +57,20 @@ RUN git clone --depth 1 https://github.com/mutability/mlat-client.git && \
     cd mlat-client && pip install . --target=/opt/mlat-client --break-system-packages
 
 # ==============================================================================
-# STAGE 3: THE ULTIMATE PRODUCTION RUNTIME (HYBRID MULTI-ARCH)
+# STAGE 4: THE ULTIMATE PRODUCTION RUNTIME (HYBRID MULTI-ARCH)
 # ==============================================================================
 FROM ghcr.io/sdr-enthusiasts/docker-adsb-ultrafeeder:latest
 ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    itcl3 tcllib tcl tclx tcl-tls libatomic1 libusb-1.0-0 socat python3-minimal && \
+    itcl3 tcllib tcl tclx tcl-tls libatomic1 libusb-1.0-0 socat python3-minimal \
+    libev4t64 libudns0t64 libjansson4 libprotobuf-c1 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Hút ruột binary sạch từ các image hãng (Đã chuẩn hóa 100% theo tọa độ thực tế s6-overlay)
 COPY --from=ghcr.io/sdr-enthusiasts/docker-flightradar24:latest_nohealthcheck /usr/bin/fr24feed /usr/bin/fr24feed
-COPY --from=ghcr.io/sdr-enthusiasts/docker-airnavradar:latest /usr/bin/rbfeeder /usr/bin/rbfeeder
+COPY --from=rbfeeder-builder /opt/rbfeeder-pkg/usr/bin/rbfeeder /usr/bin/rbfeeder
 COPY --from=ghcr.io/sdr-enthusiasts/docker-adsbhub:latest /usr/bin/adsbhub.sh /usr/bin/adsbhub.sh
 COPY --from=ghcr.io/sdr-enthusiasts/docker-opensky-network:latest /usr/bin/openskyd-dump1090 /usr/bin/openskyd
 COPY --from=ghcr.io/sdr-enthusiasts/docker-planefinder:latest /usr/local/bin/pfclient /usr/bin/pfclient

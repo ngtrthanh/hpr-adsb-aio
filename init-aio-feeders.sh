@@ -65,10 +65,16 @@ key=${FD_RBFEEDER_SHARING_KEY_2}
 lat=${FEEDER_LAT}
 lon=${FEEDER_LONG}
 alt=${FEEDER_ALT_M}
+anrb_port=32188
 [network]
 mode=beast
 external_port=30005
 external_host=127.0.0.1
+beast_output_port=32467
+raw_output_port=32468
+sbs_output_port=32469
+beast_input_port=32074
+intern_port=32078
 [mlat]
 host=mlat.rb24.com
 port=40900
